@@ -56,8 +56,11 @@ io.on('connection', (socket) => {
 
   socket.on('start_game', ({ room }) => {
   const deck = shuffle(generateDeck());
+  const topCard = deck.pop();
+  rooms[room].discardPile = [topCard];
+
   const playersInRoom = rooms[room];
-  console.log(`Iniciando juego en la sala: ${room} con jugadores: ${playersInRoom.join(', ')}`);
+  console.log(`Iniciando juego en la sala: ${room} con jugadores: ${playersInRoom}`);
   playersInRoom.forEach((playerName) => {
   console.log(`Repartiendo cartas a ${playerName} en la sala ${room}`);
   // Encuentra el socket del jugador en la sala
@@ -68,7 +71,7 @@ io.on('connection', (socket) => {
   // Reparte 10 cartas a cada jugador
   const hand = deck.splice(0, 10);
 
-  roomState[room] = {
+  rooms[room] = {
   turnIndex: 0,
   deck,
   players: playersInRoom,
@@ -79,19 +82,57 @@ io.on('connection', (socket) => {
 };
   if (playerSocket) {
     playerSocket.emit('start_game', {
-      hand,
-      turnPlayer: playersInRoom[0]
-});
+        hand,
+        turnPlayer: playersInRoom[0],
+        discardTop: topCard
+    });
   }
   
   });
   });
 
   socket.on('play_card', ({ room, card }) => {
-  const state = roomState[room];
+  const state = rooms[room];
   const playerName = socket.data.name;
   const hand = state.hands[playerName];
 
+  socket.on('draw_card', ({ room, from }) => {
+  const state = roomState[room];
+  const player = socket.data.name;
+
+  let drawn;
+  if (from === 'deck') {
+    drawn = state.deck.pop();
+  } else if (from === 'discard') {
+    drawn = state.discardPile.pop();
+  }
+
+  if (drawn) {
+    state.hands[player].push(drawn);
+    socket.emit('card_drawn', { card: drawn });
+  }
+  });
+
+  socket.on('discard_card', ({ room, card }) => {
+  const state = roomState[room];
+  const player = socket.data.name;
+  const hand = state.hands[player];
+
+  const index = hand.indexOf(card);
+  if (index !== -1) {
+    hand.splice(index, 1);
+    state.discardPile.push(card);
+
+    // pasar turno
+    state.turnIndex = (state.turnIndex + 1) % state.players.length;
+    const nextPlayer = state.players[state.turnIndex];
+
+    io.to(room).emit('discard_update', {
+      newTop: card,
+      nextPlayer
+    });
+  }
+  });
   // eliminar carta de la mano
   const index = hand.indexOf(card);
   if (index > -1) {
