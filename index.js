@@ -43,7 +43,7 @@ io.on('connection', (socket) => {
   // Crear sala ({Josue,sala1})
   socket.on('create_room', ({ name, room }) => {
     socket.data.name = name;
-    socket.data.nameAdmin=name;
+    socket.data.nameAdmin = name;
     socket.join(room);
     rooms[room] = rooms[room] || [];//rooms = { sala1: [] }
     rooms[room].push(name);//rooms = { sala1: ["Josue"] }
@@ -97,12 +97,12 @@ io.on('connection', (socket) => {
           discardTop: topCard
         });
       }
-      
+
     });
 
     console.log(`Juego iniciado en sala ${room}`);
     console.log(`Turno de ${rooms[room][roomState[room].turnIndex]}`);
-    
+
   });
 
   // Robar carta
@@ -110,20 +110,32 @@ io.on('connection', (socket) => {
     const state = roomState[room];
     const player = socket.data.name;
 
+    if  (player!=state.players[state.turnIndex]){
+      socket.emit('error_message', { message: 'No es tu turno.' });
+      console.log("No es tu turno");
+      return;
+    } 
+
+    if  (state.hasDrawn[player]){
+        socket.emit('error_message', { message: 'Ya has robado esta ronda.' });
+        console.log("Ya has robado esta ronda")
+        return;
+    }
+     
     let drawn;
     if (from === 'deck') {
       drawn = state.deck.pop();
-      console.log("Agarró la carta "+drawn+" del mazo")
+      console.log("Agarró la carta " + drawn + " del mazo")
     } else if (from === 'discard') {
       drawn = state.discardPile.pop();
-      console.log("Agarró la carta "+drawn+" del mazo de descarte")
+      console.log("Agarró la carta " + drawn + " del mazo de descarte")
     }
 
     if (drawn) {
-  state.hands[player].push(drawn);
-  state.hasDrawn[player] = true; // ✅ Marcar que ya robó
-  socket.emit('card_drawn', { card: drawn });
-}
+      state.hands[player].push(drawn);
+      state.hasDrawn[player] = true; // ✅ Marcar que ya robó
+      socket.emit('card_drawn', { card: drawn });
+    }
   });
 
   // Descartar carta
@@ -132,13 +144,13 @@ io.on('connection', (socket) => {
     const player = socket.data.name;
     const hand = state.hands[player];
 
-if (!state.hasDrawn[player]) {
-  socket.emit('error_message', { message: 'Debes robar antes de descartar.' });
-  console.log("Debes robar antes de descartar")
-  return;
-}
+    if (!state.hasDrawn[player]) {
+      socket.emit('error_message', { message: 'Debes robar antes de descartar.' });
+      console.log("Debes robar antes de descartar")
+      return;
+    }
 
-  socket.emit('discard_card_succesfully', { player })
+    socket.emit('discard_card_succesfully', { player })
     const index = hand.indexOf(card);
     if (index !== -1) {
       hand.splice(index, 1);
@@ -146,14 +158,13 @@ if (!state.hasDrawn[player]) {
 
       // Avanzar turno
       state.turnIndex = (state.turnIndex + 1) % state.players.length;
-const nextPlayer = state.players[state.turnIndex];
 
-// Resetear todos a false, luego activar solo el siguiente
-Object.keys(state.hasDrawn).forEach(name => state.hasDrawn[name] = false);
+      // Resetear todos a false, luego activar solo el siguiente
+      Object.keys(state.hasDrawn).forEach(name => state.hasDrawn[name] = false);
     }
     io.to(room).emit('discard_update', {
       newTop: card,
-      nextPlayer:state.players[0],
+      nextPlayer: state.players[state.turnIndex],
       discardedBy: player // ✅ NUEVO
     });
   });
